@@ -90,6 +90,10 @@ source install/setup.bash
 ```bash
 ros2 launch ttbot_bringup ttbot_full_system.launch.py
 ```
+### 4. Run Stanley_controller
+```bash
+ros2 launch ttbot_controller stanley_controller.launch.py
+```
 
 
 
