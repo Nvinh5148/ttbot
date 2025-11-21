@@ -26,7 +26,7 @@ add_executable(ackermann_controller
   src/ackermann_controller.cpp
 )
 
-ament_target_dependencies(ackermann_scontroller
+ament_target_dependencies(ackermann_controller
   rclcpp
   geometry_msgs
   std_msgs
