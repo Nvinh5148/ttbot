@@ -16,13 +16,14 @@ namespace
 }
 
 StanleyController::StanleyController()
-: Node("stanley_controller")
+: Node("stanley_controller"),
+  last_index_(0)    // khởi tạo last_index_
 {
 
   // Declare parameters
   this->declare_parameter("K", 1.0); // Stanley gain
   this->declare_parameter("L", 0.8); // wheel base
-  this->declare_parameter("desired_speed", 1.5);
+  this->declare_parameter("desired_speed", 0.8);
   this->declare_parameter("max_steer_deg", 60.0);
   this->declare_parameter("path_file", "path.csv");
 
@@ -112,69 +113,93 @@ void StanleyController::odomCallback(const nav_msgs::msg::Odometry::SharedPtr ms
     return;
   }
 
-  // Current pose
+  // ==== trạng thái hiện tại ====
   double x   = msg->pose.pose.position.x;
   double y   = msg->pose.pose.position.y;
   double yaw = tf2::getYaw(msg->pose.pose.orientation);
 
-  // Find closest point on path
-  size_t closest_index = 0;
+  // ==== 1) Tìm điểm gần nhất, CHỈ TÌM Ở PHÍA TRƯỚC ====
+  size_t n = path_points_.size();
+
+  if (last_index_ >= n) {
+    last_index_ = n - 1;
+  }
+
+  const size_t SEARCH_WINDOW = 40;                    // có thể tăng/giảm
+  size_t start_idx = last_index_;
+  size_t end_idx   = std::min(last_index_ + SEARCH_WINDOW, n - 1);
+
+  size_t closest_index = start_idx;
   double min_dist_sq   = std::numeric_limits<double>::infinity();
 
-  for (size_t i = 0; i < path_points_.size(); ++i) {
+  for (size_t i = start_idx; i <= end_idx; ++i) {
     double dx = x - path_points_[i].first;
     double dy = y - path_points_[i].second;
     double dist_sq = dx * dx + dy * dy;
     if (dist_sq < min_dist_sq) {
-      min_dist_sq = dist_sq;
+      min_dist_sq   = dist_sq;
       closest_index = i;
     }
   }
 
-  // Compute heading of path tại điểm gần nhất
+  // cập nhật lại, LẦN SAU CHỈ TÌM TỪ ĐÂY TRỞ VỀ SAU
+  last_index_ = closest_index;
+
+  // ==== 2) Tính yaw của path tại điểm đó ====
   double path_yaw;
-  if (closest_index < path_points_.size() - 1) {
+  if (closest_index < n - 1) {
     double next_x = path_points_[closest_index + 1].first;
     double next_y = path_points_[closest_index + 1].second;
     path_yaw = std::atan2(
         next_y - path_points_[closest_index].second,
         next_x - path_points_[closest_index].first);
   } else {
-    // Nếu là điểm cuối thì lấy yaw hiện tại 
-    path_yaw = yaw;
+    // điểm cuối: dùng đoạn nối với điểm trước nó
+    double prev_x = path_points_[closest_index - 1].first;
+    double prev_y = path_points_[closest_index - 1].second;
+    path_yaw = std::atan2(
+        path_points_[closest_index].second - prev_y,
+        path_points_[closest_index].first  - prev_x);
   }
 
-  // Heading error
+  // ==== 3) Heading error ====
   double heading_error = normalizeAngle(path_yaw - yaw);
 
-  // Cross-track error (sign dựa trên hướng path)
+  // ==== 4) Cross-track error (x sang trước, y sang trái) ====
   double dx = x - path_points_[closest_index].first;
   double dy = y - path_points_[closest_index].second;
   double cross_error = (-std::sin(path_yaw) * dx) + (std::cos(path_yaw) * dy);
 
-  // Stanley steering angle
-  double steer_angle = heading_error + std::atan2(K_ * cross_error, desired_speed_);
+  // ==== 5) Giảm tốc độ gần cuối path (cho đỡ lao quá) ====
+  double v_cmd = desired_speed_;
+  if (closest_index > n - 5) {
+    v_cmd = std::min(desired_speed_, 0.5);    // chậm lại khi gần cuối
+  }
+
+  // ==== 6) Stanley steering ====
+  double steer_angle = heading_error + std::atan2(K_ * cross_error, v_cmd);
   if (steer_angle > max_steer_)  steer_angle = max_steer_;
   if (steer_angle < -max_steer_) steer_angle = -max_steer_;
 
-  // === Bicycle model: yaw_rate = v * tan(delta) / L ===
-  double yaw_rate = desired_speed_ * std::tan(steer_angle) / L_;
+  double yaw_rate = v_cmd * std::tan(steer_angle) / L_;
 
-  // Publish command
+  // ==== 7) Publish cmd_vel ====
   geometry_msgs::msg::TwistStamped cmd_msg;
   cmd_msg.header.stamp = this->now();
   cmd_msg.header.frame_id = "base_link";
-  cmd_msg.twist.linear.x  = desired_speed_;
+  cmd_msg.twist.linear.x  = v_cmd;
   cmd_msg.twist.angular.z = yaw_rate;
   cmd_pub_->publish(cmd_msg);
 
   RCLCPP_INFO_THROTTLE(this->get_logger(), *this->get_clock(), 500,
-      "cte=%.2f, heading_error=%.2f deg, steer=%.2f deg, yaw_rate=%.2f rad/s",
+      "cte=%.2f, heading_error=%.2f deg, steer=%.2f deg, yaw_rate=%.2f rad/s, idx=%zu/%zu",
       cross_error,
       heading_error * 180.0 / M_PI,
       steer_angle * 180.0 / M_PI,
-      yaw_rate);
+      yaw_rate,
+      closest_index, n-1);
 }
+
 
 // ================================
 // Main

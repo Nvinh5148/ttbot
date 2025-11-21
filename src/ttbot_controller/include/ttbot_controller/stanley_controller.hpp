@@ -40,6 +40,7 @@ private:
   // ==== Path data ====
   // path_points_[i] = (x_i, y_i)
   std::vector<std::pair<double, double>> path_points_;
+    size_t last_index_;   // <-- thêm cái này
 };
 
 #endif  // TTBOT_CONTROLLER_STANLEY_CONTROLLER_HPP_

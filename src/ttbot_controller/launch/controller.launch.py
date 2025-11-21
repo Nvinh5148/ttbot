@@ -68,6 +68,7 @@ def generate_launch_description():
         parameters=[
             {"wheel_radius": wheel_radius},
             {"wheel_base": wheel_base},
+            {"use_sim_time": True}  # Thêm dòng này vào
         ],
         output="screen",
     )

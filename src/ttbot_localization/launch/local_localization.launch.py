@@ -7,6 +7,8 @@ import os
 
 def generate_launch_description():
 
+    use_sim_time_param = {"use_sim_time": True}
+
     use_python_arg = DeclareLaunchArgument(
         "use_python",
         default_value="False",
@@ -19,8 +21,8 @@ def generate_launch_description():
         executable="static_transform_publisher",
         arguments=["--x", "0", "--y", "0","--z", "0.103",
                    "--qx", "1", "--qy", "0", "--qz", "0", "--qw", "0",
-                   "--frame-id", "base_footprint_ekf",
-                   "--child-frame-id", "imu_link_ekf"],
+                   "--frame-id", "base_link",
+                   "--child-frame-id", "imu_link"],
     )
 
     robot_localization = Node(
@@ -28,12 +30,16 @@ def generate_launch_description():
         executable="ekf_node",
         name="ekf_filter_node",
         output="screen",
-        parameters=[os.path.join(get_package_share_directory("ttbot_localization"), "config", "ekf.yaml")],
+        parameters=[
+            os.path.join(get_package_share_directory("ttbot_localization"), "config", "ekf.yaml"),
+            use_sim_time_param
+            ],
     )
 
     imu_republisher_cpp = Node(
         package="ttbot_localization",
         executable="imu_republisher",
+        parameters=[use_sim_time_param]
     )
 
     return LaunchDescription([

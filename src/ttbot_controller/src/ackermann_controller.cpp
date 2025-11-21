@@ -48,15 +48,15 @@ AckermannController::AckermannController(const std::string & name)
     // Khởi tạo message odometry
     odom_msg_.header.frame_id       = "odom";
     odom_msg_.child_frame_id        = "base_link";
-    odom_msg_.pose.pose.orientation.x = 1.0; // mặc định không quay
-    odom_msg_.pose.pose.orientation.y = 1.0; // mặc định không quay
-    odom_msg_.pose.pose.orientation.z = 1.0; // mặc định không quay
-    odom_msg_.pose.pose.orientation.w = 1.0; // mặc định không quay
+    odom_msg_.pose.pose.orientation.x = 0.0; // khởi tạo quaternion đơn vị
+    odom_msg_.pose.pose.orientation.y = 0.0; // khởi tạo quaternion đơn vị
+    odom_msg_.pose.pose.orientation.z = 0.0; // khởi tạo quaternion đơn vị
+    odom_msg_.pose.pose.orientation.w = 1.0; // khởi tạo quaternion đơn vị
 
     // TF broadcaster
     transform_broadcaster_ = std::make_unique<tf2_ros::TransformBroadcaster>(*this);
     transform_stamped_.header.frame_id = "odom";
-    transform_stamped_.child_frame_id = "base_footprint";
+    transform_stamped_.child_frame_id = "base_link";
 
 
     // ====== INIT ======
@@ -211,16 +211,16 @@ void AckermannController::jointCallback(const sensor_msgs::msg::JointState & msg
 
     // publish odometry
     odom_pub_->publish(odom_msg_);    
-    // publish TF
-    transform_broadcaster_->sendTransform(transform_stamped_);
+    // // publish TF
+    // transform_broadcaster_->sendTransform(transform_stamped_);
 
 
-    // In thông tin ra console
-    RCLCPP_INFO_THROTTLE(
-        get_logger(), *get_clock(), 2000,   
-        "Ackermann: v = %.3f [m/s], w = %.3f [rad/s], "
-        "x = %.2f [m], y = %.2f [m], th = %.2f [rad]",
-        v, w, x_, y_, theta_);
+    // // In thông tin ra console
+    // RCLCPP_INFO_THROTTLE(
+    //     get_logger(), *get_clock(), 2000,   
+    //     "Ackermann: v = %.3f [m/s], w = %.3f [rad/s], "
+    //     "x = %.2f [m], y = %.2f [m], th = %.2f [rad]",
+    //     v, w, x_, y_, theta_);
 }
 
 
