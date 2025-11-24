@@ -83,6 +83,13 @@ private:
     double Q_epsi_;
     double R_delta_;
 
+    // ==== Goal Parameters ====
+    double goal_tolerance_;
+    bool reached_goal_;
+
+
+
+
     // ==== Tham số Tối ưu hóa (nếu sau này cần) ====
     // int N_c_; // Control Horizon
 
