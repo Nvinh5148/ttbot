@@ -15,7 +15,7 @@ def generate_launch_description():
     path_file_arg = DeclareLaunchArgument(
         "path_file",
 
-        default_value="path_u_to_S.csv",
+        default_value="path_l.csv",
         description="Tên file CSV trong share/ttbot_controller/path/"
 
     )
