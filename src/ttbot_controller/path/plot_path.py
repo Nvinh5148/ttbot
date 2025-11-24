@@ -7,10 +7,14 @@ if len(sys.argv) > 1:
     path_file = sys.argv[1]
 else:
 <<<<<<< HEAD
+<<<<<<< HEAD
     path_file = "path_uturn.csv"
 =======
     path_file = "path_u_to_S.csv"
 >>>>>>> c905fff ( available mpc)
+=======
+    path_file = "path_right.csv"
+>>>>>>> 9a9fa327999ee5683041f4e1f2666fe709c40b3f
 
 xs = []
 ys = []
