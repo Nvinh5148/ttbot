@@ -38,7 +38,7 @@ Includes:
 Ackermann control module.
 
 Features:
-- Stanley controller
+- Stanley controller, MPC controller
 - Steering angle control  
 - Speed control for drive wheels  
 - Subscribes to `/cmd_vel` or `/ackermann_cmd`  
@@ -126,6 +126,11 @@ ros2 launch ttbot_controller stanley.launch.py
 ```bash
 ros2 launch ttbot_controller mpc.launch.py
 ```
+### 6. Pub path for MPC
+```bash
+ros2 run ttbot_controller path_publisher --ros-args -p path_file:=path_u_to_S.csv
+```
+
 
 
 

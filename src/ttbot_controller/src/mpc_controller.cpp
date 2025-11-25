@@ -16,8 +16,6 @@
 namespace {
 constexpr const char* kPackageName = "ttbot_controller";
 
-
-
 } // namespace
 
 // Khởi tạo MPC Controller
@@ -29,6 +27,9 @@ MpcController::MpcController()
     this->declare_parameter("wheel_base", 0.8);
     this->declare_parameter("max_steer_deg", 60.0);
     this->declare_parameter("path_file", "path.csv");
+    this->declare_parameter("goal_tolerance", 0.3);  // [m] bán kính để coi là tới đích
+
+
 
     // MPC Parameters
     this->declare_parameter("N_p", 10);
@@ -42,7 +43,7 @@ MpcController::MpcController()
     desired_speed_ = this->get_parameter("desired_speed").as_double();
     wheel_base_    = this->get_parameter("wheel_base").as_double();
     double max_steer_deg = this->get_parameter("max_steer_deg").as_double();
-    path_file_     = this->get_parameter("path_file").as_string();
+    // path_file_     = this->get_parameter("path_file").as_string();
 
     N_p_    = this->get_parameter("N_p").as_int();
     dt_mpc_ = this->get_parameter("dt_mpc").as_double();
@@ -50,6 +51,9 @@ MpcController::MpcController()
     Q_epsi_ = this->get_parameter("Q_epsi").as_double();
     R_delta_= this->get_parameter("R_delta").as_double();
 
+    // Mục tiêu đến đích
+    goal_tolerance_ = this->get_parameter("goal_tolerance").as_double();
+    reached_goal_ = false;  // xe chưa tới đích
 
     // Ràng buộc điều khiển
     max_steer_ = max_steer_deg * M_PI / 180.0;
@@ -63,8 +67,16 @@ MpcController::MpcController()
     q_data_ = nullptr; l_data_ = nullptr; u_data_ = nullptr;
     // 2. Load Path
     // Tái sử dụng hàm loadPathFromCSV() đã có (cần sao chép vào tệp này hoặc khai báo bên ngoài)
-    loadPathFromCSV(); 
+
+
+   // loadPathFromCSV(); 
+
+
     current_index_ = 0;
+    has_path_ = false;
+
+
+
     // 3. Subscribers & Publishers
     odom_sub_ = this->create_subscription<nav_msgs::msg::Odometry>(
         "/odometry/filtered", 10,
@@ -72,8 +84,38 @@ MpcController::MpcController()
 
     cmd_pub_ = this->create_publisher<geometry_msgs::msg::TwistStamped>("/ackermann_controller/cmd_vel", 10);
 
+    path_sub_ = this->create_subscription<nav_msgs::msg::Path>(
+        "/mpc_path", 1,
+        std::bind(&MpcController::pathCallback, this, std::placeholders::_1));
+
+
     RCLCPP_INFO(this->get_logger(), "MPC Controller initialized with N_p=%d, dt=%.2f", N_p_, dt_mpc_);
 }
+
+
+// =================================================================================
+// Path Callback: Nhận đường đi từ bên ngoài
+// =================================================================================
+void MpcController::pathCallback(const nav_msgs::msg::Path::SharedPtr msg)
+{
+    path_points_.clear();
+    path_points_.reserve(msg->poses.size());
+
+    for (const auto &pose_stamped : msg->poses) {
+        double x = pose_stamped.pose.position.x;
+        double y = pose_stamped.pose.position.y;
+        path_points_.emplace_back(x, y);
+    }
+
+    current_index_ = 0;
+    has_path_ = !path_points_.empty();
+
+    RCLCPP_INFO(this->get_logger(),
+                "Received /mpc_path with %zu points", path_points_.size());
+}
+
+
+
 
 // =================================================================================
 // Destructor: Dọn dẹp bộ nhớ thủ công (Bắt buộc với OSQP)
@@ -465,7 +507,11 @@ Control MpcController::solveMPC(double ey0, double epsi0)
 
 void MpcController::odomCallback(const nav_msgs::msg::Odometry::SharedPtr msg)
 {
-    if (path_points_.empty()) return;
+    if (!has_path_ || path_points_.empty()) {
+        RCLCPP_WARN_THROTTLE(this->get_logger(), *this->get_clock(), 2000,
+                             "Waiting for /mpc_path...");
+        return;
+    }
 
     double x   = msg->pose.pose.position.x;
     double y   = msg->pose.pose.position.y;
@@ -475,7 +521,7 @@ void MpcController::odomCallback(const nav_msgs::msg::Odometry::SharedPtr msg)
     size_t idx = findClosestPoint(x, y);
     double rx, ry, psi_ref;
     computeRefAtIndex(idx, rx, ry, psi_ref);
-
+    
     // 2. Lỗi theo path
     double ey0, epsi0;
     computeErrorState(x, y, yaw, rx, ry, psi_ref, ey0, epsi0);
@@ -494,6 +540,22 @@ void MpcController::odomCallback(const nav_msgs::msg::Odometry::SharedPtr msg)
     cmd.twist.linear.x  = desired_speed_;
     cmd.twist.angular.z = omega;
 
+
+    // 6. Them logic dừng xe khi tới đích
+    const auto &goal = path_points_.back();
+    double dx_g = x - goal.first;
+    double dy_g = y - goal.second;
+    double dist_to_goal = std::sqrt(dx_g*dx_g + dy_g*dy_g);
+    // Nếu đã vào vùng gần điểm cuối -> ép xe dừng
+    if (dist_to_goal < goal_tolerance_ && idx >= path_points_.size() - 2) {
+        cmd.twist.linear.x  = 0.0;
+        cmd.twist.angular.z = 0.0;
+        RCLCPP_INFO(this->get_logger(),
+                    "GOAL REACHED, STOP !!!!!!!1. dist=%.3f", dist_to_goal);
+    }
+
+
+    //7. Publish command
     cmd_pub_->publish(cmd);
     RCLCPP_INFO(this->get_logger(),
     "LOG_COMPARE | x=%.3f y=%.3f yaw=%.3f | ref_x=%.3f ref_y=%.3f ref_yaw=%.3f | ey=%.3f epsi=%.3f",
