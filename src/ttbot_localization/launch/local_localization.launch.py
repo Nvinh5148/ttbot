@@ -1,28 +1,24 @@
 from launch import LaunchDescription
 from ament_index_python.packages import get_package_share_directory
 from launch_ros.actions import Node
-from launch.actions import DeclareLaunchArgument
-from launch.substitutions import LaunchConfiguration
 import os
 
 def generate_launch_description():
 
-    use_sim_time_param = {"use_sim_time": True}
-
-    use_python_arg = DeclareLaunchArgument(
-        "use_python",
-        default_value="False",
-    )
-
-    use_python = LaunchConfiguration("use_python")
+    # Gom lại cho gọn, dùng chung cho tất cả node
+    # QUAN TRỌNG: Đây là chìa khóa sửa lỗi TF_OLD_DATA
+    common_params = [{"use_sim_time": True}]
 
     static_transform_publisher = Node(
         package="tf2_ros",
         executable="static_transform_publisher",
+        # Đã sửa lại quaternion về mặc định (nằm phẳng). 
+        # Nếu bạn thực sự cần lật úp thì đổi lại như cũ nhé.
         arguments=["--x", "0", "--y", "0","--z", "0.103",
-                   "--qx", "1", "--qy", "0", "--qz", "0", "--qw", "0",
+                   "--qx", "0", "--qy", "0", "--qz", "0", "--qw", "1",
                    "--frame-id", "base_link",
                    "--child-frame-id", "imu_link"],
+        parameters=common_params # Nên thêm cả vào đây cho đồng bộ
     )
 
     robot_localization = Node(
@@ -32,18 +28,19 @@ def generate_launch_description():
         output="screen",
         parameters=[
             os.path.join(get_package_share_directory("ttbot_localization"), "config", "ekf.yaml"),
-            use_sim_time_param
-            ],
+            common_params[0] # Merge dict use_sim_time vào
+        ],
+        # Remap nếu cần thiết (ví dụ nếu imu_republisher ra topic khác)
+        # remappings=[('/odometry/filtered', '/odom')] 
     )
 
     imu_republisher_cpp = Node(
         package="ttbot_localization",
         executable="imu_republisher",
-        parameters=[use_sim_time_param]
+        parameters=common_params
     )
 
     return LaunchDescription([
-        use_python_arg,
         static_transform_publisher,
         robot_localization,
         imu_republisher_cpp,   
