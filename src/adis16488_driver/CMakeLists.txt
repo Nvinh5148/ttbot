@@ -26,6 +26,10 @@ ament_target_dependencies(
   "tf2_geometry_msgs"
 )
 
+install(DIRECTORY launch
+  DESTINATION share/${PROJECT_NAME}
+)
+
 install(TARGETS adis16488_node
   DESTINATION lib/${PROJECT_NAME})
 
