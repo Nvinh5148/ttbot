@@ -162,8 +162,6 @@ ros2 launch ttbot_controller mpc.launch.py
 ```bash
     ros2 run ttbot_controller path_publisher --ros-args -p path_file:=path_u_to_S.csv
 ```
-
-
 ### 7. Run imu node 
 ```bash
 sudo usermod -aG dialout $USER
@@ -172,7 +170,13 @@ logout then login again
 ros2 run adis16488_driver adis16488_node --ros-args -p port:=/dev/ttbot_imu -p baudrate:=460800
 ```
 
-
+## ⚙️ QT GUI 
+```bash
+cd ~/ttbot_ws
+source install/setup.bash
+export QT_QPA_PLATFORM=xcb
+ros2 run ttbot_gui gui_node
+```
 
 
 
