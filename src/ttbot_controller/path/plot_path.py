@@ -8,11 +8,7 @@ import numpy as np
 if len(sys.argv) > 1:
     path_file = sys.argv[1]
 else:
-<<<<<<< HEAD
-    path_file = "path_l.csv"
-=======
-    path_file = "path_u_to_S.csv"
->>>>>>> 1a4a7946ef2039ae23ea368d537b43da5416ef17
+    path_file = "path_s_shape.csv"
 
 xs_list = []
 ys_list = []
@@ -31,19 +27,6 @@ except FileNotFoundError:
     xs_list = 4 * np.sin(t)
     ys_list = 2 * np.sin(2*t)
 
-<<<<<<< HEAD
-# ==== ĐỔI TRỤC (X <-> Y) ====
-plt.plot(ys, xs, "-o")
-
-# ==== Nếu muốn lật Y lại cho cùng chiều ROS, bật dòng dưới ====
-# plt.gca().invert_yaxis()
-
-plt.xlabel("Y (m)")
-plt.ylabel("X (m)")
-plt.axis("equal")
-plt.grid(True)
-plt.title(path_file)
-=======
 xs_np = np.array(xs_list)
 ys_np = np.array(ys_list)
 
@@ -54,7 +37,7 @@ plot_h = ys_np # Y axis data (horizontal)
 plot_v = xs_np # X axis data (vertical)
 
 # 1. Draw path with specific name
-ax.plot(plot_h, plot_v, "-b", linewidth=1.5, alpha=0.5, label="path_u_to_S")
+ax.plot(plot_h, plot_v, "-b", linewidth=1.5, alpha=0.5, label="path")
 
 # 2. Draw NEAT & CLEAR arrows
 if len(plot_h) > 2:
@@ -104,5 +87,4 @@ ax.legend(loc='upper right')
 ax.set_title("path", y=1.02) # Set Title explicitly
 ax.axis("equal")
 
->>>>>>> 1a4a7946ef2039ae23ea368d537b43da5416ef17
 plt.show()
