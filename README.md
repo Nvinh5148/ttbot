@@ -125,9 +125,10 @@ sudo udevadm control --reload-rules && sudo udevadm trigger
 
 ### 5. IMU config
 ```bash
-echo -ne '$DATOP 0000\r' > /dev/ttbot_imu
-echo -ne '$DATOP 1111\r' > /dev/ttbot_imu
-echo -ne '$BRATE 3\r' > /dev/ttbot_imu
+stty -F /dev/ttbot_imu 460800 cs8 -cstopb -parenb -echo
+echo -e '$DATOP 0000\r' > /dev/ttbot_imu
+echo -e '$DATOP 1111\r' > /dev/ttbot_imu
+echo -e '$BRATE 3\r' > /dev/ttbot_imu
 ```
 
 
