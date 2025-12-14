@@ -18,18 +18,11 @@ public:
 
 private:
     void velCallback(const geometry_msgs::msg::TwistStamped & msg);
-    // callback đọc encoder / joint_states
     void jointCallback(const sensor_msgs::msg::JointState & msg);
 
-
-
-    // Sub nhận /cmd_vel
     rclcpp::Subscription<geometry_msgs::msg::TwistStamped>::SharedPtr vel_sub_;
-
-    // Sub nhận /joint_states (từ ROS2 control / encoder)
     rclcpp::Subscription<sensor_msgs::msg::JointState>::SharedPtr joint_sub_;
 
-    // Xuất ra ROS2 Control:
     rclcpp::Publisher<std_msgs::msg::Float64MultiArray>::SharedPtr rear_wheel_pub_;
     rclcpp::Publisher<std_msgs::msg::Float64MultiArray>::SharedPtr steering_pub_;
     rclcpp::Publisher<nav_msgs::msg::Odometry>::SharedPtr odom_pub_;
@@ -39,20 +32,15 @@ private:
     double wheel_radius_;
     double wheel_base_;
 
-
-
-    // ===== hỗ trợ tính tốc độ  =====
     double rear_left_prev_pos_;
     double rear_right_prev_pos_;
     rclcpp::Time prev_time_;
 
-
-    // ===== TRẠNG THÁI ODOMETRY (mô hình xe đạp) =====
-    double x_;      // m
-    double y_;      // m
-    double theta_;  // rad
+    // bicycle model state
+    double x_;      
+    double y_;     
+    double theta_;  
     
-    // message odometry để publish
     nav_msgs::msg::Odometry odom_msg_;
 
     // TF
