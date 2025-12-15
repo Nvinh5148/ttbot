@@ -7,7 +7,7 @@ This project includes control, sensor processing, localization, and system bring
 
 REF: https://github.com/Nvinh5148/microros_ws
 
-## 🚗 Overview
+## Overview
 
 The `ttbot_ws` workspace provides:
 
@@ -23,7 +23,7 @@ Designed to run natively on **ROS2 Humble**.
 
 ---
 
-## 📦 Packages
+## Packages
 
 ### **`ttbot_bringup`**
 System launch and configuration package.
@@ -74,7 +74,7 @@ Provides:
 
 
 ---
-## 🧩 Prerequisites
+## Prerequisites
 ### 1. Ubuntu and ROS
 Ubuntu >= 20.04
 
