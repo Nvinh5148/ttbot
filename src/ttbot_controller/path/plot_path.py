@@ -8,7 +8,7 @@ import numpy as np
 if len(sys.argv) > 1:
     path_file = sys.argv[1]
 else:
-    path_file = "path_u_to_S.csv"
+    path_file = "gps_path.csv"
 
 xs_list = []
 ys_list = []
@@ -37,7 +37,7 @@ plot_h = ys_np # Y axis data (horizontal)
 plot_v = xs_np # X axis data (vertical)
 
 # 1. Draw path with specific name
-ax.plot(plot_h, plot_v, "-b", linewidth=1.5, alpha=0.5, label="path_u_to_S")
+ax.plot(plot_h, plot_v, "-b", linewidth=1.5, alpha=0.5, label="path")
 
 # 2. Draw NEAT & CLEAR arrows
 if len(plot_h) > 2:

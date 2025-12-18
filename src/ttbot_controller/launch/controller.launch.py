@@ -4,10 +4,16 @@ from launch_ros.actions import Node
 from launch.actions import DeclareLaunchArgument
 from launch.substitutions import LaunchConfiguration
 
-
 def generate_launch_description():
 
-    # ---------- Tham số cho controller ----------
+    use_sim_time_arg = DeclareLaunchArgument(
+        'use_sim_time',
+        default_value='true',
+        description='Use simulation (Gazebo) clock if true'
+    )
+    
+    use_sim_time = LaunchConfiguration('use_sim_time')
+
     wheel_radius_arg = DeclareLaunchArgument(
         "wheel_radius",
         default_value="0.15"
@@ -15,17 +21,12 @@ def generate_launch_description():
 
     wheel_base_arg = DeclareLaunchArgument(
         "wheel_base",
-        default_value="0.8"
+        default_value="0.65"
     )
 
     wheel_radius = LaunchConfiguration("wheel_radius")
     wheel_base   = LaunchConfiguration("wheel_base")
 
-
-
-
-
-    # ---------- Spawner joint_state_broadcaster ----------
     joint_state_broadcaster_spawner = Node(
         package="controller_manager",
         executable="spawner",
@@ -37,7 +38,6 @@ def generate_launch_description():
         output="screen",
     )
 
-    # ---- Spawner cho Steering Controller (position) ----
     front_steering_controller_spawner = Node(
         package="controller_manager",
         executable="spawner",
@@ -49,7 +49,6 @@ def generate_launch_description():
         output="screen",
     )
 
-    # ---- Spawner cho Rear Wheel Controller (velocity) ----
     rear_wheel_controller_spawner = Node(
         package="controller_manager",
         executable="spawner",
@@ -61,22 +60,19 @@ def generate_launch_description():
         output="screen",
     )
 
-    # ---------- Node C++ AckermannController ----------
     ackermann_controller_node = Node(
         package="ttbot_controller",          
         executable="ackermann_controller",   
         parameters=[
             {"wheel_radius": wheel_radius},
             {"wheel_base": wheel_base},
-            {"use_sim_time": True}  # Thêm dòng này vào
+            {"use_sim_time": use_sim_time}  
         ],
         output="screen",
     )
 
-
-
-
     return LaunchDescription([
+        use_sim_time_arg, 
         wheel_radius_arg,
         wheel_base_arg,
 

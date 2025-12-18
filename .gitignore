@@ -12,6 +12,8 @@ __pycache__/
 
 # ROS bags
 *.bag
+*.gv
+*.pdf
 
 # Misc
 *.swp

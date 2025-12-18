@@ -1,209 +1,197 @@
 #include "ttbot_controller/stanley_controller.hpp"
-
-#include <cmath>
-#include <fstream>
-#include <sstream>
 #include <limits>
+#include <tf2_geometry_msgs/tf2_geometry_msgs.hpp>
 
-#include "tf2_geometry_msgs/tf2_geometry_msgs.hpp"
-#include "ament_index_cpp/get_package_share_directory.hpp"
-
-
-//pkg name
-namespace
-{
-  constexpr const char* kPackageName = "ttbot_controller";
-}
+// Helper logs
+static double deg2rad(double deg) { return deg * M_PI / 180.0; }
+static double rad2deg(double rad) { return rad * 180.0 / M_PI; }
 
 StanleyController::StanleyController()
-: Node("stanley_controller"),
-  last_index_(0)    // khởi tạo last_index_
+: Node("stanley_controller")
 {
+    // 1. Declare Parameters
+    this->declare_parameter("desired_speed", 1.5);
+    this->declare_parameter("wheel_base", 0.8);
+    this->declare_parameter("max_steer_deg", 30.0);
+    this->declare_parameter("goal_tolerance", 0.3);
+    this->declare_parameter("k_gain", 2.0);  
+    this->declare_parameter("k_soft", 1.0);  
 
-  // Declare parameters
-  this->declare_parameter("K", 1.0); // Stanley gain
-  this->declare_parameter("L", 0.8); // wheel base
-  this->declare_parameter("desired_speed", 0.8);
-  this->declare_parameter("max_steer_deg", 60.0);
-  this->declare_parameter("path_file", "path.csv");
+    // 2. Load Parameters
+    desired_speed_ = this->get_parameter("desired_speed").as_double();
+    wheel_base_    = this->get_parameter("wheel_base").as_double();
+    double max_steer_deg = this->get_parameter("max_steer_deg").as_double();
+    max_steer_     = deg2rad(max_steer_deg);
+    
+    k_gain_ = this->get_parameter("k_gain").as_double();
+    k_soft_ = this->get_parameter("k_soft").as_double();
+    goal_tolerance_ = this->get_parameter("goal_tolerance").as_double();
 
-  // Load parameters
-  K_             = this->get_parameter("K").as_double();
-  L_             = this->get_parameter("L").as_double();
-  desired_speed_ = this->get_parameter("desired_speed").as_double();
-  double max_steer_deg = this->get_parameter("max_steer_deg").as_double();
-  path_file_     = this->get_parameter("path_file").as_string();
+    // Init state
+    current_index_ = 0;
+    has_path_ = false;
+    reached_goal_ = false; 
 
-  max_steer_ = max_steer_deg * M_PI / 180.0;
+    // 3. Subscribers & Publishers
+    odom_sub_ = this->create_subscription<nav_msgs::msg::Odometry>(
+        "/odometry/filtered", 10,
+        std::bind(&StanleyController::odomCallback, this, std::placeholders::_1));
 
-  // Load path file
-  loadPathFromCSV();
+    path_sub_ = this->create_subscription<nav_msgs::msg::Path>(
+        "/mpc_path", 1, 
+        std::bind(&StanleyController::pathCallback, this, std::placeholders::_1));
 
-  // Subscribers & Publishers
-  odom_sub_ = this->create_subscription<nav_msgs::msg::Odometry>(
-      "/ackermann_controller/odom", 10,
-      std::bind(&StanleyController::odomCallback, this, std::placeholders::_1));
+    cmd_pub_ = this->create_publisher<geometry_msgs::msg::TwistStamped>(
+        "/ackermann_controller/cmd_vel", 10);
 
-  cmd_pub_ = this->create_publisher<geometry_msgs::msg::TwistStamped>("/ackermann_controller/cmd_vel", 10);
-
-  RCLCPP_INFO(this->get_logger(),
-              "Stanley Controller initialized. K=%.3f, L=%.3f, v=%.3f, max_steer=%.1f deg, path_points=%zu",
-              K_, L_, desired_speed_, max_steer_deg, path_points_.size());
+    RCLCPP_INFO(this->get_logger(), 
+        "Stanley RESTORED: MaxSteer=%.1f deg, Speed=%.2f m/s, K=%.2f", max_steer_deg, desired_speed_, k_gain_);
 }
 
-// ================================
-// Load CSV Path File
-// ================================
-void StanleyController::loadPathFromCSV()
+StanleyController::~StanleyController() {}
+
+void StanleyController::pathCallback(const nav_msgs::msg::Path::SharedPtr msg)
 {
-  std::string share_dir;
-  try {
-    share_dir = ament_index_cpp::get_package_share_directory(kPackageName);
-  } catch (const std::exception &e) {
-    RCLCPP_ERROR(this->get_logger(),
-                 "Failed to get share directory for package '%s': %s",
-                 kPackageName, e.what());
-    return;
-  }
-    // CSV trong share/ttbot_controller/path/
-    std::string csv_path = share_dir + "/path/" + path_file_;
+    if (msg->poses.empty()) return;
 
-  std::ifstream file(csv_path);
-  if (!file.is_open()) {
-    RCLCPP_ERROR(this->get_logger(), "Could not open path file: %s", csv_path.c_str());
-    return;
-  }
-
-  path_points_.clear();
-  std::string line;
-  while (std::getline(file, line)) {
-    if (line.empty()) continue;
-    std::stringstream ss(line);
-    double px, py;
-    char comma;
-    if (ss >> px >> comma >> py) {
-      path_points_.emplace_back(px, py);
+    path_points_.clear();
+    path_points_.reserve(msg->poses.size());
+    for (const auto &pose_stamped : msg->poses) {
+        path_points_.emplace_back(
+            pose_stamped.pose.position.x,
+            pose_stamped.pose.position.y
+        );
     }
-  }
-  file.close();
 
-  RCLCPP_INFO(this->get_logger(),
-              "Loaded %zu path points from %s",
-              path_points_.size(), csv_path.c_str());
+    current_index_ = 0;
+    has_path_ = true;
+    reached_goal_ = false; 
+
+    RCLCPP_INFO(this->get_logger(), "--> PATH RECEIVED: %zu points. Resetting...", path_points_.size());
 }
 
-// ================================
-// Normalize angle to [-pi, pi]
-// ================================
-double StanleyController::normalizeAngle(double angle)
+size_t StanleyController::findClosestPoint(double front_x, double front_y)
 {
-  while (angle > M_PI)  angle -= 2.0 * M_PI;
-  while (angle < -M_PI) angle += 2.0 * M_PI;
-  return angle;
+    if (path_points_.empty()) return 0;
+
+    size_t closest_idx = current_index_;
+    double min_dist_sq = std::numeric_limits<double>::infinity();
+    
+    // Tìm kiếm xung quanh
+    size_t search_limit = std::min(current_index_ + 100, path_points_.size());
+    if (current_index_ == 0) search_limit = path_points_.size();
+
+    for (size_t i = current_index_; i < search_limit; ++i) {
+        double dx = front_x - path_points_[i].first;
+        double dy = front_y - path_points_[i].second;
+        double d_sq = dx*dx + dy*dy;
+
+        if (d_sq < min_dist_sq) {
+            min_dist_sq = d_sq;
+            closest_idx = i;
+        }
+    }
+    
+    current_index_ = closest_idx;
+    return closest_idx;
 }
 
-// ================================
-// Callback: Process /odom
-// ================================
+double StanleyController::computeSteering(double front_x, double front_y, double yaw, double v)
+{
+    size_t idx = findClosestPoint(front_x, front_y);
+    double map_x = path_points_[idx].first;
+    double map_y = path_points_[idx].second;
+
+    // 1. Path Heading
+    double map_yaw = 0.0;
+    if (idx < path_points_.size() - 1) {
+        double dx = path_points_[idx + 1].first - map_x;
+        double dy = path_points_[idx + 1].second - map_y;
+        map_yaw = std::atan2(dy, dx);
+    } else if (idx > 0) {
+        double dx = map_x - path_points_[idx - 1].first;
+        double dy = map_y - path_points_[idx - 1].second;
+        map_yaw = std::atan2(dy, dx);
+    }
+
+    // 2. Cross Track Error (Logic Cũ - Chạy đúng)
+    // Vector: PATH - ROBOT (Thay vì Robot - Path)
+    double dx = map_x - front_x; 
+    double dy = map_y - front_y;
+    
+    // Nếu xe lệch TRÁI (Normal bên trái) -> error này sẽ Âm -> atan2 ra Âm -> Lái PHẢI (Đúng)
+    double error_front_axle = -std::sin(map_yaw) * dx + std::cos(map_yaw) * dy;
+
+    // 3. Heading Error
+    double theta_e = map_yaw - yaw;
+    while (theta_e > M_PI) theta_e -= 2.0 * M_PI;
+    while (theta_e < -M_PI) theta_e += 2.0 * M_PI;
+
+    // 4. Stanley Law (Dùng dấu + như cũ)
+    double phi_d = std::atan2(k_gain_ * error_front_axle, v + k_soft_);
+    double delta_raw = theta_e + phi_d;
+
+    while (delta_raw > M_PI) delta_raw -= 2.0 * M_PI;
+    while (delta_raw < -M_PI) delta_raw += 2.0 * M_PI;
+
+    double delta_clamped = std::clamp(delta_raw, -max_steer_, max_steer_);
+
+    // ==== LOG DEBUG (GIỮ LẠI ĐỂ KIỂM TRA) ====
+    RCLCPP_INFO_THROTTLE(this->get_logger(), *this->get_clock(), 500,
+        "Stanley Log | idx: %zu | CTE: %.3f | Theta_e: %.2f | Raw: %.1f deg -> Limit: %.1f",
+        idx, error_front_axle, theta_e, rad2deg(delta_raw), rad2deg(delta_clamped));
+
+    return delta_clamped;
+}
+
 void StanleyController::odomCallback(const nav_msgs::msg::Odometry::SharedPtr msg)
 {
-  if (path_points_.empty()) {
-    RCLCPP_WARN_THROTTLE(this->get_logger(), *this->get_clock(), 2000,
-                         "No path loaded yet!");
-    return;
-  }
-
-  // ==== trạng thái hiện tại ====
-  double x   = msg->pose.pose.position.x;
-  double y   = msg->pose.pose.position.y;
-  double yaw = tf2::getYaw(msg->pose.pose.orientation);
-
-  // ==== 1) Tìm điểm gần nhất, CHỈ TÌM Ở PHÍA TRƯỚC ====
-  size_t n = path_points_.size();
-
-  if (last_index_ >= n) {
-    last_index_ = n - 1;
-  }
-
-  const size_t SEARCH_WINDOW = 40;                    // có thể tăng/giảm
-  size_t start_idx = last_index_;
-  size_t end_idx   = std::min(last_index_ + SEARCH_WINDOW, n - 1);
-
-  size_t closest_index = start_idx;
-  double min_dist_sq   = std::numeric_limits<double>::infinity();
-
-  for (size_t i = start_idx; i <= end_idx; ++i) {
-    double dx = x - path_points_[i].first;
-    double dy = y - path_points_[i].second;
-    double dist_sq = dx * dx + dy * dy;
-    if (dist_sq < min_dist_sq) {
-      min_dist_sq   = dist_sq;
-      closest_index = i;
+    // === CHỐT CHẶN DỪNG ===
+    if (reached_goal_) {
+        geometry_msgs::msg::TwistStamped stop_cmd;
+        stop_cmd.header.stamp = this->now();
+        stop_cmd.header.frame_id = "base_link";
+        stop_cmd.twist.linear.x = 0.0;
+        stop_cmd.twist.angular.z = 0.0;
+        cmd_pub_->publish(stop_cmd);
+        return; 
     }
-  }
 
-  // cập nhật lại, LẦN SAU CHỈ TÌM TỪ ĐÂY TRỞ VỀ SAU
-  last_index_ = closest_index;
+    if (!has_path_ || path_points_.empty()) return;
 
-  // ==== 2) Tính yaw của path tại điểm đó ====
-  double path_yaw;
-  if (closest_index < n - 1) {
-    double next_x = path_points_[closest_index + 1].first;
-    double next_y = path_points_[closest_index + 1].second;
-    path_yaw = std::atan2(
-        next_y - path_points_[closest_index].second,
-        next_x - path_points_[closest_index].first);
-  } else {
-    // điểm cuối: dùng đoạn nối với điểm trước nó
-    double prev_x = path_points_[closest_index - 1].first;
-    double prev_y = path_points_[closest_index - 1].second;
-    path_yaw = std::atan2(
-        path_points_[closest_index].second - prev_y,
-        path_points_[closest_index].first  - prev_x);
-  }
+    double x = msg->pose.pose.position.x;
+    double y = msg->pose.pose.position.y;
+    double yaw = tf2::getYaw(msg->pose.pose.orientation);
+    double v = desired_speed_; 
 
-  // ==== 3) Heading error ====
-  double heading_error = normalizeAngle(path_yaw - yaw);
+    // === CHECK GOAL ===
+    double dx_g = x - path_points_.back().first;
+    double dy_g = y - path_points_.back().second;
+    double dist_to_goal = std::sqrt(dx_g*dx_g + dy_g*dy_g);
 
-  // ==== 4) Cross-track error (x sang trước, y sang trái) ====
-  double dx = x - path_points_[closest_index].first;
-  double dy = y - path_points_[closest_index].second;
-  double cross_error = (-std::sin(path_yaw) * dx) + (std::cos(path_yaw) * dy);
+    // Điều kiện dừng
+    if (dist_to_goal < goal_tolerance_ && current_index_ > (path_points_.size() * 0.9)) {
+        reached_goal_ = true;
+        RCLCPP_WARN(this->get_logger(), "!!! GOAL REACHED (Dist: %.2f) !!!", dist_to_goal);
+        return;
+    }
 
-  // ==== 5) Giảm tốc độ gần cuối path (cho đỡ lao quá) ====
-  double v_cmd = desired_speed_;
-  if (closest_index > n - 5) {
-    v_cmd = std::min(desired_speed_, 0.5);    // chậm lại khi gần cuối
-  }
+    // === TÍNH TOÁN ===
+    double front_x = x + wheel_base_ * std::cos(yaw);
+    double front_y = y + wheel_base_ * std::sin(yaw);
 
-  // ==== 6) Stanley steering ====
-  double steer_angle = heading_error + std::atan2(K_ * cross_error, v_cmd);
-  if (steer_angle > max_steer_)  steer_angle = max_steer_;
-  if (steer_angle < -max_steer_) steer_angle = -max_steer_;
+    double delta = computeSteering(front_x, front_y, yaw, v);
+    double omega = (v / wheel_base_) * std::tan(delta);
 
-  double yaw_rate = v_cmd * std::tan(steer_angle) / L_;
-
-  // ==== 7) Publish cmd_vel ====
-  geometry_msgs::msg::TwistStamped cmd_msg;
-  cmd_msg.header.stamp = this->now();
-  cmd_msg.header.frame_id = "base_link";
-  cmd_msg.twist.linear.x  = v_cmd;
-  cmd_msg.twist.angular.z = yaw_rate;
-  cmd_pub_->publish(cmd_msg);
-
-  RCLCPP_INFO_THROTTLE(this->get_logger(), *this->get_clock(), 500,
-      "cte=%.2f, heading_error=%.2f deg, steer=%.2f deg, yaw_rate=%.2f rad/s, idx=%zu/%zu",
-      cross_error,
-      heading_error * 180.0 / M_PI,
-      steer_angle * 180.0 / M_PI,
-      yaw_rate,
-      closest_index, n-1);
+    // Publish
+    geometry_msgs::msg::TwistStamped cmd;
+    cmd.header.stamp = this->now();
+    cmd.header.frame_id = "base_link";
+    cmd.twist.linear.x = v;
+    cmd.twist.angular.z = omega;
+    cmd_pub_->publish(cmd);
 }
 
-
-// ================================
-// Main
-// ================================
 int main(int argc, char * argv[])
 {
   rclcpp::init(argc, argv);

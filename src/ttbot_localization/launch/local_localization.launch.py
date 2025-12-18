@@ -1,28 +1,28 @@
 from launch import LaunchDescription
+from launch.actions import DeclareLaunchArgument  # <--- Thêm cái này
+from launch.substitutions import LaunchConfiguration # <--- Thêm cái này
 from ament_index_python.packages import get_package_share_directory
 from launch_ros.actions import Node
-from launch.actions import DeclareLaunchArgument
-from launch.substitutions import LaunchConfiguration
 import os
 
 def generate_launch_description():
+    
+    # 1. KHAI BÁO NHẬN THAM SỐ TỪ BÊN NGOÀI
+    # Nếu không ai truyền vào thì mặc định là False (an toàn cho robot thật)
+    use_sim_time = LaunchConfiguration('use_sim_time', default='false')
 
-    use_sim_time_param = {"use_sim_time": True}
-
-    use_python_arg = DeclareLaunchArgument(
-        "use_python",
-        default_value="False",
-    )
-
-    use_python = LaunchConfiguration("use_python")
+    # 2. SỬA LẠI BIẾN NÀY ĐỂ DÙNG THAM SỐ ĐỘNG
+    # Thay vì True/False cứng, ta đưa biến use_sim_time vào
+    common_params = [{"use_sim_time": use_sim_time}]
 
     static_transform_publisher = Node(
         package="tf2_ros",
         executable="static_transform_publisher",
         arguments=["--x", "0", "--y", "0","--z", "0.103",
-                   "--qx", "1", "--qy", "0", "--qz", "0", "--qw", "0",
+                   "--qx", "0", "--qy", "0", "--qz", "0", "--qw", "1",
                    "--frame-id", "base_link",
                    "--child-frame-id", "imu_link"],
+        parameters=common_params 
     )
 
     robot_localization = Node(
@@ -32,18 +32,23 @@ def generate_launch_description():
         output="screen",
         parameters=[
             os.path.join(get_package_share_directory("ttbot_localization"), "config", "ekf.yaml"),
-            use_sim_time_param
-            ],
+            common_params[0] # Merge dict use_sim_time vào
+        ],
     )
 
     imu_republisher_cpp = Node(
         package="ttbot_localization",
         executable="imu_republisher",
-        parameters=[use_sim_time_param]
+        parameters=common_params
     )
 
     return LaunchDescription([
-        use_python_arg,
+        # 3. QUAN TRỌNG: PHẢI KHAI BÁO ARGUMENT Ở ĐÂY
+        DeclareLaunchArgument(
+            'use_sim_time',
+            default_value='false',
+            description='Use simulation (Gazebo) clock if true'),
+            
         static_transform_publisher,
         robot_localization,
         imu_republisher_cpp,   

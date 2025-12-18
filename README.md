@@ -5,7 +5,9 @@ This project includes control, sensor processing, localization, and system bring
 
 ---
 
-## 🚗 Overview
+REF: https://github.com/Nvinh5148/microros_ws
+
+## Overview
 
 The `ttbot_ws` workspace provides:
 
@@ -21,7 +23,7 @@ Designed to run natively on **ROS2 Humble**.
 
 ---
 
-## 📦 Packages
+## Packages
 
 ### **`ttbot_bringup`**
 System launch and configuration package.
@@ -72,7 +74,7 @@ Provides:
 
 
 ---
-## 🧩 Prerequisites
+## Prerequisites
 ### 1. Ubuntu and ROS
 Ubuntu >= 20.04
 
@@ -100,6 +102,36 @@ mkdir build && cd build
 cmake ..
 sudo make install
 ```
+
+
+### 4. USB Device Setup (Udev Rules)
+```bash
+sudo nano /etc/udev/rules.d/99-ttbot.rules
+```
+Copy and paste the following content into the file:
+```bash
+# --- IMU SENSOR ---
+# Create fixed symlink: /dev/ttbot_imu
+SUBSYSTEM=="tty", ATTRS{idVendor}=="10c4", ATTRS{idProduct}=="ea60", ATTRS{serial}=="0001", SYMLINK+="ttbot_imu", MODE="0666"
+
+# --- STM32 MICRO-CONTROLLER ---
+# Create fixed symlink: /dev/ttbot_stm32
+SUBSYSTEM=="tty", ATTRS{idVendor}=="1a86", ATTRS{idProduct}=="7523", SYMLINK+="ttbot_stm32", MODE="0666"
+```
+Apply and verify
+``` bash
+sudo udevadm control --reload-rules && sudo udevadm trigger
+```
+
+### 5. IMU config
+```bash
+stty -F /dev/ttbot_imu 460800 cs8 -cstopb -parenb -echo
+echo -e '$DATOP 0000\r' > /dev/ttbot_imu
+echo -e '$DATOP 1111\r' > /dev/ttbot_imu
+echo -e '$BRATE 3\r' > /dev/ttbot_imu
+```
+
+
 ## ⚙️ Build Instructions (ROS2 Humble)
 
 ### 1. Source ROS2 
@@ -128,13 +160,23 @@ ros2 launch ttbot_controller mpc.launch.py
 ```
 ### 6. Pub path for MPC
 ```bash
-ros2 run ttbot_controller path_publisher --ros-args -p path_file:=path_u_to_S.csv
+    ros2 run ttbot_controller path_publisher --ros-args -p path_file:=path_u_to_S.csv
+```
+### 7. Run imu node 
+```bash
+sudo usermod -aG dialout $USER
+
+logout then login again 
+ros2 run adis16488_driver adis16488_node --ros-args -p port:=/dev/ttbot_imu -p baudrate:=460800
 ```
 
-
-
-
-
+## ⚙️ QT GUI 
+```bash
+cd ~/ttbot_ws
+source install/setup.bash
+export QT_QPA_PLATFORM=xcb
+ros2 run ttbot_gui gui_node
+```
 
 
 
