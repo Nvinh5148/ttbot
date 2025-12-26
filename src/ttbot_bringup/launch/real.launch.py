@@ -9,36 +9,48 @@ from launch_ros.actions import Node
 from launch_ros.parameter_descriptions import ParameterValue
 
 def generate_launch_description():
-    # ====================================================
-    # 1. KHAI BÁO PATH
-    # ====================================================
+
     pkg_description = get_package_share_directory('ttbot_description')
     pkg_localization = get_package_share_directory('ttbot_localization')
     pkg_controller = get_package_share_directory('ttbot_controller')
     pkg_imu_driver = get_package_share_directory('adis16488_driver')
+    pkg_gps_driver = get_package_share_directory('ublox_driver') 
 
-    # ====================================================
-    # 2. CẤU HÌNH THAM SỐ (ARGUMENTS)
-    # ====================================================
-    
-    # [QUAN TRỌNG] Port phần cứng (Theo Udev Rules của bạn)
-    imu_port = LaunchConfiguration('imu_port')
-    arg_imu = DeclareLaunchArgument(
-        'imu_port', 
-        default_value='/dev/ttbot_imu', # <-- Khớp với ảnh bạn gửi
-        description='Port for IMU'
+    run_qgc = LaunchConfiguration('run_qgc')
+    arg_run_qgc = DeclareLaunchArgument(
+        'run_qgc', 
+        default_value='true', 
+        description='Enable QGroundControl Bridge'
     )
+
+    qgc_bridge_node = TimerAction(
+        period=16.0, 
+        actions=[
+            Node(
+                package='qgc_bridge',
+                executable='bridge_node', 
+                name='qgc_bridge_node',
+                output='screen',
+                condition=IfCondition(run_qgc) 
+            )
+        ]
+    )
+
+
+    imu_port = LaunchConfiguration('imu_port')
+    arg_imu = DeclareLaunchArgument('imu_port', default_value='/dev/ttbot_imu')
     
     stm32_port = LaunchConfiguration('stm32_port')
-    arg_stm32 = DeclareLaunchArgument(
-        'stm32_port', 
-        default_value='/dev/ttbot_stm32', # <-- Khớp với ảnh bạn gửi
-        description='Port for STM32 Micro-ROS'
-    )
+    arg_stm32 = DeclareLaunchArgument('stm32_port', default_value='/dev/ttbot_stm32')
 
-    # Các tham số khác
-    use_sim_time = LaunchConfiguration('use_sim_time')
-    arg_sim_time = DeclareLaunchArgument('use_sim_time', default_value='false')
+    gps_port = LaunchConfiguration('gps_port')
+    arg_gps = DeclareLaunchArgument('gps_port', default_value='/dev/ttbot_gps')
+
+    run_joy = LaunchConfiguration('run_joy')
+    arg_run_joy = DeclareLaunchArgument(
+        'run_joy', default_value='false',
+        description='Set to true to enable joystick teleop'
+    )
 
     controller_type = LaunchConfiguration('controller_type')
     arg_controller = DeclareLaunchArgument(
@@ -47,17 +59,17 @@ def generate_launch_description():
     )
 
     run_path = LaunchConfiguration('run_path')
-    arg_run_path = DeclareLaunchArgument('run_path', default_value='true')
+    arg_run_path = DeclareLaunchArgument('run_path', default_value='false')
     
     path_file = LaunchConfiguration('path_file')
-    arg_path_file = DeclareLaunchArgument('path_file', default_value='path_l.csv')
+    arg_path = DeclareLaunchArgument('path_file', default_value='path_l.csv')
 
-    # ====================================================
-    # 3. KÍCH HOẠT PHẦN CỨNG (HARDWARE LAYER)
-    # ====================================================
+    use_sim_time = LaunchConfiguration('use_sim_time')
+    arg_sim_time = DeclareLaunchArgument('use_sim_time', default_value='false')
 
-    # 3.1. ROBOT STATE PUBLISHER
-    # Cung cấp cây TF tĩnh (base_link -> imu_link, gps_link)
+   
+    #  HARDWARE & DRIVERS LAYER
+
     xacro_file = os.path.join(pkg_description, 'urdf', 'ttbot.urdf.xacro')
     robot_description = ParameterValue(Command(['xacro ', xacro_file, ' is_ignition:=false']), value_type=str)
 
@@ -68,45 +80,47 @@ def generate_launch_description():
         parameters=[{'robot_description': robot_description, 'use_sim_time': use_sim_time}]
     )
 
-    # 3.2. IMU DRIVER
-    # Gọi file launch của driver IMU với port đã định
     imu_launch = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(os.path.join(pkg_imu_driver, 'launch', 'imu_system.launch.py')),
         launch_arguments={'imu_port': imu_port}.items()
     )
 
-    # 3.3. MICRO-ROS AGENT (Kết nối STM32)
-    # Node này giúp STM32 (chạy micro-ros) giao tiếp Serial với máy tính
+    gps_launch = IncludeLaunchDescription(
+        PythonLaunchDescriptionSource(os.path.join(pkg_gps_driver, 'launch', 'gps.launch.py')),
+        launch_arguments={
+            'port': gps_port,   
+            'baud': '38400',    
+            'frame_id': 'gps_link'
+        }.items()
+    )
+
     micro_ros_agent = Node(
         package='micro_ros_agent',
         executable='micro_ros_agent',
         name='micro_ros_agent',
-        output='screen',
-        arguments=['serial', '--dev', stm32_port, '-b', '115200']
+        arguments=['serial', '--dev', '/dev/ttyUSB0', '-b', '115200'],
+        output='screen'
     )
 
-    # 3.4. ACKERMANN KINEMATICS
-    # Node này nhận cmd_vel -> tính toán -> gửi lệnh xuống STM32 (qua topic mà Agent subscribe)
+
+
     ackermann_node = Node(
         package='ttbot_controller',
         executable='ackermann_controller',
-        name='ackermann_controller',
         output='screen',
-        parameters=[{
-            'use_sim_time': use_sim_time,
-            'wheel_radius': 0.15,
-            'wheel_base': 0.65
-        }]
+        parameters=[{'use_sim_time': use_sim_time}]
+    )
+    
+    joy_launch = IncludeLaunchDescription(
+        PythonLaunchDescriptionSource(os.path.join(pkg_controller, 'launch', 'joystick_teleop.launch.py')),
+        condition=IfCondition(run_joy),
+        launch_arguments={'use_sim_time': use_sim_time}.items()
     )
 
-    # ====================================================
-    # 4. THUẬT TOÁN (ALGORITHMS LAYER)
-    # ====================================================
-
-    # [Delay 3s] LOCALIZATION (EKF)
-    # Chạy sau khi IMU và STM32 (Odom source) đã lên
+    # ALGORITHMS LAYER
+    
     localization_launch = TimerAction(
-        period=3.0,
+        period=4.0,
         actions=[
             IncludeLaunchDescription(
                 PythonLaunchDescriptionSource(os.path.join(pkg_localization, 'launch', 'global_localization.launch.py')),
@@ -115,12 +129,11 @@ def generate_launch_description():
         ]
     )
 
-    # [Delay 5s] PATH PUBLISHER (Nếu run_path=true)
     path_pub_launch = GroupAction(
         condition=IfCondition(run_path),
         actions=[
             TimerAction(
-                period=5.0,
+                period=6.0,
                 actions=[
                     IncludeLaunchDescription(
                         PythonLaunchDescriptionSource(os.path.join(pkg_controller, 'launch', 'path_publisher.launch.py')),
@@ -131,8 +144,6 @@ def generate_launch_description():
         ]
     )
 
-    # [Delay 6s] HIGH-LEVEL CONTROLLER (Stanley / MPC)
-    # >> MPC Group
     mpc_group = GroupAction(
         condition=IfCondition(PythonExpression(["'", controller_type, "' == 'mpc'"])),
         actions=[
@@ -143,7 +154,6 @@ def generate_launch_description():
         ]
     )
 
-    # >> Stanley Group
     stanley_group = GroupAction(
         condition=IfCondition(PythonExpression(["'", controller_type, "' == 'stanley'"])),
         actions=[
@@ -155,26 +165,28 @@ def generate_launch_description():
     )
 
     high_level_control = TimerAction(
-        period=6.0,
+        period=8.0,
         actions=[stanley_group, mpc_group]
     )
 
-    # ====================================================
-    # 5. RETURN
-    # ====================================================
     return LaunchDescription([
-        # Args
-        arg_sim_time, arg_controller, arg_run_path, arg_path_file, 
-        arg_imu, arg_stm32, # 2 Arg quan trọng
 
-        # Hardware Nodes
+        arg_run_qgc,
+        arg_sim_time, arg_controller, arg_run_path, arg_path, 
+        arg_imu, arg_stm32, arg_gps, arg_run_joy, 
+
+        # Hardware & Drivers
         robot_state_publisher,
         imu_launch,
-        micro_ros_agent,  # Node cầu nối STM32
-        ackermann_node,   # Node tính toán hình học xe
-        
-        # Algorithm Nodes
+        gps_launch,
+      # micro_ros_agent,
+        ackermann_node,
+        qgc_bridge_node,
+        joy_launch,
+
+        # Algorithms layer
         localization_launch,
         path_pub_launch,
-        high_level_control
+        high_level_control,
+        micro_ros_agent
     ])

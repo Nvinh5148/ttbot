@@ -24,7 +24,7 @@ setup(
     },
     entry_points={
         'console_scripts': [
-            'bridge = qgc_bridge.bridge_node:main',
+            'bridge_node = qgc_bridge.bridge_node:main',
         ],
     },
 )

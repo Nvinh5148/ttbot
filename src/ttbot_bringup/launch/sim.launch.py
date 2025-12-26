@@ -13,7 +13,36 @@ def generate_launch_description():
     pkg_localization = get_package_share_directory('ttbot_localization')
     pkg_controller = get_package_share_directory('ttbot_controller')
 
+
+    run_qgc = LaunchConfiguration('run_qgc')
+    arg_run_qgc = DeclareLaunchArgument(
+        'run_qgc', 
+        default_value='true', 
+        description='Enable QGroundControl Bridge'
+    )
+
+
+    qgc_bridge_node = TimerAction(
+        period=15.0, 
+        actions=[
+            Node(
+                package='qgc_bridge',
+                executable='bridge_node', 
+                name='qgc_bridge_node',
+                output='screen',
+                condition=IfCondition(run_qgc) 
+            )
+        ]
+    )
     
+
+    run_joy = LaunchConfiguration('run_joy')
+    arg_run_joy = DeclareLaunchArgument(
+        'run_joy', 
+        default_value='false',
+        description='Set to true to run joystick teleop'
+    )
+
     controller_type = LaunchConfiguration('controller_type')
     arg_controller = DeclareLaunchArgument(
         'controller_type', 
@@ -62,6 +91,13 @@ def generate_launch_description():
             )
         ]
     )
+
+    joy_launch = IncludeLaunchDescription(
+        PythonLaunchDescriptionSource(os.path.join(pkg_controller, 'launch', 'joystick_teleop.launch.py')),
+        condition=IfCondition(run_joy),
+        launch_arguments={'use_sim_time': use_sim_time}.items()
+    )
+
 
     path_pub_launch = GroupAction(
         condition=IfCondition(run_path),
@@ -116,15 +152,19 @@ def generate_launch_description():
 
     return LaunchDescription([
         arg_sim_time,
+        arg_run_qgc,
         arg_controller,
         arg_rviz,
         arg_path,
         arg_run_path,
+        arg_run_joy,
 
         gazebo_launch,
         low_level_control_launch,
         localization_launch,
         path_pub_launch,
+        joy_launch,
         high_level_control_delayed,
+        qgc_bridge_node,
         rviz_node
     ])

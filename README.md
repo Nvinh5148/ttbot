@@ -1,88 +1,3 @@
-# ttbot_ws
-
-A ROS2 Humble workspace for an autonomous Ackermann-steering robot running on **Ubuntu 22.04**.  
-This project includes control, sensor processing, localization, and system bringup for a car-like robotic platform.
-
----
-
-REF: https://github.com/Nvinh5148/microros_ws
-
-## Overview
-
-The `ttbot_ws` workspace provides:
-
-- Ackermann steering control  
-- Rear-wheel speed control  
-- Sensor processing (IMU, encoders, LiDAR depending on configuration)  
-- Localization and odometry fusion  
-- Robot URDF/Xacro description  
-- Bringup launch system for ROS2  
-- Clean structure for real robot deployment and simulation
-
-Designed to run natively on **ROS2 Humble**.
-
----
-
-## Packages
-
-### **`ttbot_bringup`**
-System launch and configuration package.
-
-Includes:
-- Robot bringup launch files  
-- Controller + sensor launch  
-- Parameter YAML files  
-- Unified startup for real robot or simulation  
-
----
-
-### **`ttbot_controller`**
-Ackermann control module.
-
-Features:
-- Stanley controller, MPC controller
-- Steering angle control  
-- Speed control for drive wheels  
-- Subscribes to `/cmd_vel` or `/ackermann_cmd`  
-- Publishes odometry & TF transforms  
-- Converts velocity commands to Ackermann steering commands
-
----
-
-### **`ttbot_description`**
-Robot model (URDF/Xacro).
-
-Contains:
-- Robot chassis & wheel model  
-- Ackermann geometry  
-- Sensor frames (LiDAR, IMU, etc.)  
-- Visual + collision models  
-- Ready for RViz2 & Gazebo simulation
-
----
-
-### **`ttbot_localization`**
-Localization module.
-
-Provides:
-- Odometry fusion (IMU + encoders)  
-- EKF/UKF (with `robot_localization`)  
-- TF map → odom → base_link  
-- Stable localization for navigation
-
----
-
-
----
-## Prerequisites
-### 1. Ubuntu and ROS
-Ubuntu >= 20.04
-
-ROS2 >= Foxy (Recommend to use ROS2-Humble).
-
-Installation guide: https://docs.ros.org/en/humble/Installation/Ubuntu-Install-Debs.html
-
-_Note: Please install the required ROS 2 packages._
 ### 2. OSQP
 ```bash
 cd ~
@@ -110,13 +25,9 @@ sudo nano /etc/udev/rules.d/99-ttbot.rules
 ```
 Copy and paste the following content into the file:
 ```bash
-# --- IMU SENSOR ---
-# Create fixed symlink: /dev/ttbot_imu
 SUBSYSTEM=="tty", ATTRS{idVendor}=="10c4", ATTRS{idProduct}=="ea60", ATTRS{serial}=="0001", SYMLINK+="ttbot_imu", MODE="0666"
-
-# --- STM32 MICRO-CONTROLLER ---
-# Create fixed symlink: /dev/ttbot_stm32
 SUBSYSTEM=="tty", ATTRS{idVendor}=="1a86", ATTRS{idProduct}=="7523", SYMLINK+="ttbot_stm32", MODE="0666"
+SUBSYSTEM=="tty", ATTRS{idVendor}=="1546", ATTRS{idProduct}=="01a8", SYMLINK+="ttbot_gps", MODE="0666"
 ```
 Apply and verify
 ``` bash
@@ -146,17 +57,17 @@ cd ~/Desktop/ttbot_ws
 colcon build 
 source install/setup.bash
 ```
-### 3. Run the full system (no path, no rviz, and run mpc ) or full option
+### 3. Run the full system (no path_pub, no rviz, no joy, no qgc and run mpc) or full option
 ```bash
 ros2 launch ttbot_bringup sim.launch.py
 ```
 ```bash
-ros2 launch ttbot_bringup sim.launch.py run_path:=true run_rviz:=true controller_type:=stanley
+ros2 launch ttbot_bringup sim.launch.py run_path:=true run_rviz:=true run_qgc:=true controller_type:=stanley run_joy:=true 
 ```
 
 ### 6. Pub path for MPC
 ```bash
-    ros2 run ttbot_controller path_publisher --ros-args -p path_file:=path_u_to_S.csv
+ros2 run ttbot_controller path_publisher --ros-args -p path_file:=path_u_to_S.csv
 ```
 ### 7. Run imu node 
 ```bash
@@ -166,13 +77,92 @@ logout then login again
 ros2 run adis16488_driver adis16488_node --ros-args -p port:=/dev/ttbot_imu -p baudrate:=460800
 ```
 
-## ⚙️ QT GUI 
+
+
+
+
+## REAL
+### B1. Check connection 
 ```bash
-cd ~/ttbot_ws
-source install/setup.bash
-export QT_QPA_PLATFORM=xcb
-ros2 run ttbot_gui gui_node
+ls -l /dev/ttbot_* 
 ```
+must have ttbot_gps, ttbot_imu, ttbot_stm32
+### B2. Sensors check
+no run_path, joy
+```bash
+ros2 launch ttbot_bringup real.launch.py
+```
+
+```bash
+ros2 topic echo /gps/fix
+```
+status.status > 0 
+
+
+```bash
+ros2 topic echo /imu/data_filtered
+```
+orientation change
+
+
+```bash
+ros2 topic echo /ackermann_controller/odom
+```
+pose.position change
+twist.linear.x change 
+
+### B3. Manual Control 
+```bash
+ros2 launch ttbot_bringup real.launch.py run_joy:=true
+```
+### B4. Localization 
+```bash
+ros2 run rviz2 rviz2
+```
+Lower the robot onto the ground and manually guide it in a straight line for about 5–10 meters.
+In RViz, the red arrow (Robot) should move smoothly and follow exactly the direction you are guiding it.
+If the robot on the screen drifts or jumps around erratically, then the EKF needs to be retuned (ekf_global.yaml).
+
+```bash
+	ros2 run micro_ros_agent micro_ros_agent serial --dev /dev/ttbot_stm32
+```
+
+
+### B4. Auto
+
+(no path_pub, no rviz, no joy, no qgc and run mpc)
+```bash
+ros2 launch ttbot_bringup real.launch.py
+```
+full option 
+```bash
+ros2 launch ttbot_bringup real.launch.py run_path:=true run_joy:=true run_qgc:=true controller_type:=stanley
+```
+
+# Data Logging & Analysis
+## 1. Rosbag
+Chạy lệnh này trên terminal của Robot trước khi cho xe chạy
+```bash
+mkdir -p ~/bag_files
+cd ~/bag_files
+
+# Ghi lại các topic quan trọng
+ros2 bag record -o test_lan_1 \
+  /gps/fix \
+  /odometry/global \
+  /imu/data_filtered \
+  /ackermann_controller/cmd_vel \
+  /ackermann_controller/odom \
+  /mpc_path \
+  /tf \
+  /tf_static
+```
+Cho xe chạy hết đường (Path). Sau khi xe dừng, quay lại terminal bấm Ctrl+C để lưu file.
+## 2. updating....
+
+
+
+
 # LOCALIZATION CHECK
 ## 1. CHECK SENSOR (sensor nguon)
 hz > 0
@@ -195,3 +185,8 @@ ros2 topic echo --qos-reliability best_effort /odometry/gps
 ros2 run tf2_ros tf2_echo map base_link
 ```
 (Nếu hiện Translation/Rotation -> Hệ thống định vị đã thành công)
+
+
+
+nano ~/.bashrc
+source ~/microros_ws/install/setup.bash
