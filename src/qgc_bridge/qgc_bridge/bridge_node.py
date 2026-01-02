@@ -24,7 +24,7 @@ class QGCBridge(Node):
         self.sys_id = 1
         self.comp_id = 1
         self.connection_string = 'udpout:localhost:14550' 
-        self.heading_offset_rad = math.pi / -2
+        self.heading_offset_rad = 0
         
         self.mav = mavutil.mavlink_connection(
             self.connection_string, 
