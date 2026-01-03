@@ -188,5 +188,4 @@ def generate_launch_description():
         localization_launch,
         path_pub_launch,
         high_level_control,
-        micro_ros_agent
     ])
