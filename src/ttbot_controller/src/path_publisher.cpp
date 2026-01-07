@@ -19,46 +19,56 @@ public:
             std::chrono::seconds(1),
             std::bind(&PathPublisher::timerCallback, this));
 
-        RCLCPP_INFO(this->get_logger(), "--> Path Publisher: FIGURE-8 (Infinity Shape)");
+        RCLCPP_INFO(this->get_logger(), "--> Path Publisher: SQUARE 15x15m");
     }
 
 private:
     void timerCallback()
     {
-        // GỌI HÀM TẠO SỐ 8
-        nav_msgs::msg::Path path_msg = generateFigure8Path();
+        nav_msgs::msg::Path path_msg = generateSquarePath();
         path_pub_->publish(path_msg);
     }
 
-    nav_msgs::msg::Path generateFigure8Path()
+    // Hàm tạo 1 điểm Pose nhanh gọn
+    void addPointToPath(nav_msgs::msg::Path &path, double x, double y) {
+        geometry_msgs::msg::PoseStamped pose;
+        pose.header = path.header;
+        pose.pose.position.x = x;
+        pose.pose.position.y = y;
+        pose.pose.position.z = 0.0;
+        pose.pose.orientation.w = 1.0; // Mặc định
+        path.poses.push_back(pose);
+    }
+
+    nav_msgs::msg::Path generateSquarePath()
     {
         nav_msgs::msg::Path path;
         path.header.stamp = this->now();
         path.header.frame_id = "odom"; 
 
-        int total_points = 1200; // Tăng số điểm lên để đường cong mượt hơn ở chỗ cua gắt
-        double scale = 5.0;      // Kích thước của số 8 (Rộng ~10m)
+        double side_len = 15.0; // Cạnh hình vuông 15m
+        double step = 0.05;     // Mật độ điểm: 5cm một điểm (càng nhỏ path càng mịn)
 
-        for (int i = 0; i < total_points; ++i) {
-            double t = 2.0 * M_PI * i / (double)total_points;
-
-            // --- CÔNG THỨC HÌNH SỐ 8 (Lemniscate of Gerono dạng đơn giản) ---
-            // x chạy qua lại như con lắc (cos)
-            // y chạy nhanh gấp đôi (sin 2t) để tạo nút thắt
-            double x = scale * std::cos(t);
-            double y = scale * std::sin(2.0 * t) / 2.0; 
-
-            geometry_msgs::msg::PoseStamped pose;
-            pose.header = path.header;
-            pose.pose.position.x = x;
-            pose.pose.position.y = y;
-            pose.pose.position.z = 0.0;
-
-            // Quaternion mặc định
-            pose.pose.orientation.w = 1.0;
-
-            path.poses.push_back(pose);
+        // --- CẠNH 1: Đi từ (0,0) -> (15,0) ---
+        for (double x = 0; x <= side_len; x += step) {
+            addPointToPath(path, x, 0.0);
         }
+
+        // --- CẠNH 2: Đi từ (15,0) -> (15,15) ---
+        for (double y = 0; y <= side_len; y += step) {
+            addPointToPath(path, side_len, y);
+        }
+
+        // --- CẠNH 3: Đi từ (15,15) -> (0,15) ---
+        for (double x = side_len; x >= 0; x -= step) {
+            addPointToPath(path, x, side_len);
+        }
+
+        // --- CẠNH 4: Đi từ (0,15) -> (0,0) ---
+        for (double y = side_len; y >= 0; y -= step) {
+            addPointToPath(path, 0.0, y);
+        }
+
         return path;
     }
 
