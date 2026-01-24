@@ -199,7 +199,7 @@ private:
 
       // 3. Gia tốc tuyến tính
       imu_msg.linear_acceleration.x = values[6] * 0.0001 * G_TO_MS2;
-      imu_msg.linear_acceleration.y = values[7] * 0.0001 * G_TO_MS2;
+      imu_msg.linear_acceleration.y = -1.0 * values[7] * 0.0001 * G_TO_MS2;
       imu_msg.linear_acceleration.z = values[8] * 0.0001 * G_TO_MS2;
 
       // Set covariance (Giữ nguyên)

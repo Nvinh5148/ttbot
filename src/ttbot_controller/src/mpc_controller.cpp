@@ -42,7 +42,7 @@ MpcController::MpcController()
     reached_goal_ = false;
 
     odom_sub_ = this->create_subscription<nav_msgs::msg::Odometry>(
-        "/odometry/filtered", 10,
+        "/odometry/global", 10,
         std::bind(&MpcController::odomCallback, this, std::placeholders::_1));
 
     path_sub_ = this->create_subscription<nav_msgs::msg::Path>(
