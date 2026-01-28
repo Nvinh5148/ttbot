@@ -196,6 +196,7 @@ nano ~/.bashrc
 xsen
 
 git clone -b ros2 https://github.com/xsenssupport/Xsens_MTi_ROS_Driver_and_Ntrip_Client.git
+
 sudo apt install ros-humble-mavros-msgs
 
 
