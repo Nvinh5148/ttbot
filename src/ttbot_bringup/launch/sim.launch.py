@@ -12,10 +12,20 @@ def generate_launch_description():
     pkg_description = get_package_share_directory('ttbot_description')
     pkg_localization = get_package_share_directory('ttbot_localization')
     pkg_controller = get_package_share_directory('ttbot_controller')
+    pkg_fast_lio = get_package_share_directory('fast_lio') # <--- [THÊM] Đường dẫn Fast-LIO
 
 
     use_sim_time = LaunchConfiguration('use_sim_time')
     arg_sim_time = DeclareLaunchArgument('use_sim_time', default_value='true')
+
+    # [THÊM MỚI] Argument để bật/tắt Fast-LIO
+    run_fastlio = LaunchConfiguration('run_fastlio')
+    arg_run_fastlio = DeclareLaunchArgument(
+        'run_fastlio',
+        default_value='true', # Mặc định bật luôn để test
+        description='Set to true to run Fast-LIO mapping in Simulation'
+    )
+    
 
     run_qgc = LaunchConfiguration('run_qgc')
     arg_run_qgc = DeclareLaunchArgument(
@@ -78,6 +88,24 @@ def generate_launch_description():
     gazebo_launch = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(os.path.join(pkg_description, 'launch', 'gazebo.launch.py')),
         launch_arguments={'use_sim_time': use_sim_time}.items()
+    )
+    # --- 2. FAST-LIO NODE (Thay thế cho Localization cũ hoặc chạy song song) ---
+    # Lưu ý: Fast-LIO sẽ publish Odometry và Map. 
+    # Nếu node localization cũ của bạn cũng publish TF odom->base_link thì sẽ bị xung đột.
+    # Tạm thời ta cứ chạy, nếu thấy xe giật thì tắt localization_launch đi.
+    
+    fast_lio_config_path = os.path.join(pkg_fast_lio, 'config', 'velodyne_sim.yaml') # Dùng file config Sim mới tạo
+
+    fast_lio_node = Node(
+        condition=IfCondition(run_fastlio),
+        package='fast_lio',
+        executable='fastlio_mapping',
+        name='fastlio_mapping',
+        output='screen',
+        parameters=[
+            fast_lio_config_path,
+            {'use_sim_time': use_sim_time}
+        ]
     )
 
     low_level_control_launch = TimerAction(
@@ -161,6 +189,7 @@ def generate_launch_description():
 
     return LaunchDescription([
         arg_sim_time,
+        arg_run_fastlio,
         arg_run_qgc,
         arg_controller,
         arg_rviz,
@@ -169,6 +198,7 @@ def generate_launch_description():
         arg_run_joy,
 
         gazebo_launch,
+        fast_lio_node,   # <--- Node Fast LIO chạy ở đây
         low_level_control_launch,
         localization_launch,
         path_pub_launch,
