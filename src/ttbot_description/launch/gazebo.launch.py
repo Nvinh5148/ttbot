@@ -93,7 +93,7 @@ def generate_launch_description():
             ('/gps/fix', '/gps/fix'),
             ('/imu', '/imu/out'),
             ('/world/gps_world/model/ttbot/joint_state', '/joint_states'),
-            ('/velodyne_points/points', '/velodyne_points')
+            ('/velodyne_points/points', '/velodyne_points/points')
         ]
     )
 

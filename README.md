@@ -225,3 +225,39 @@ Set up rviz lai ( trong fast _ lio)
 
 cai 
 SDK
+
+1.
+config file preprocess.cpp 
+
+// ==========================================================
+  // BƯỚC 1: KIỂM TRA XEM GÓI TIN CÓ "TIME" KHÔNG?
+  // ==========================================================
+  bool has_time = false;
+  for (const auto& field : msg->fields) {
+      if (field.name == "time") {
+          has_time = true;
+          break;
+      }
+  }
+
+  // ==========================================================
+  // BƯỚC 2: QUYẾT ĐỊNH ĐƯỜNG ĐI
+  // ==========================================================
+  if (!has_time) {
+      // TRƯỜNG HỢP GAZEBO: Không có time -> Dùng hàm mặc định (an toàn)
+      default_handler(msg);
+      return; // <--- Quan trọng: Thoát ngay, không chạy đoạn dưới nữa
+  }
+
+  // TRƯỜNG HỢP XE THẬT: Có time -> Chạy tiếp đoạn code gốc bên dưới
+  // (Giữ nguyên toàn bộ code cũ của bạn từ đây trở xuống)
+  // ==========================================================
+2.
+  them file config velodyne_sim.yaml
+
+  
+  cach chay : 
+   
+Terminal1 : ros2 launch ttbot_bringup sim.launch.py
+
+Terminal2 : ros2 launch fast_lio mapping.launch.py config_file:=velodyne_sim.yaml use_sim_time:=true
